@@ -3,7 +3,7 @@ import cli_factory as cli
 
 cli_init = {
     'path': '/opt/bin/Infortrend/raidcmd_ESDS10.jar',
-    'ip': '10.10.10.200',
+    'ip': '10.10.10.20',
     'password': '',
     'cli_retry_time': 1
 }
