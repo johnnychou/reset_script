@@ -33,7 +33,7 @@ for si in si_list:
     rc, out = delete_si.execute(si['SI-ID'], '-y')
 
 for part in part_list:
-    if entry['Mapped'].lower() == 'true':
+    if part['Mapped'].lower() == 'true':
         print('Delete Map for Part ID: %s' % part['ID'])
         rc, out = delete_map.execute('part',  part['ID'], '-y')
     print('Delete Part ID: %s' % part['ID'])
