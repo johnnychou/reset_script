@@ -17,24 +17,17 @@ Infortrend basic CLI factory.
 """
 
 import abc
-
-from oslo_concurrency import processutils
-from oslo_log import log as logging
+import subprocess
 import six
-
-from cinder import utils
-
-LOG = logging.getLogger(__name__)
-
-DEFAULT_RETRY_TIME = 5
 
 
 def retry_cli(func):
+
     def inner(self, *args, **kwargs):
         total_retry_time = self.cli_retry_time
 
         if total_retry_time is None:
-            total_retry_time = DEFAULT_RETRY_TIME
+            total_retry_time = 5
 
         retry_time = 0
         while retry_time < total_retry_time:
@@ -43,24 +36,43 @@ def retry_cli(func):
 
             if rc == 0:
                 break
-
-            LOG.error(
-                'Retry %(retry)s times: %(method)s Failed '
-                '%(rc)s: %(reason)s', {
-                    'retry': retry_time,
-                    'method': self.__class__.__name__,
-                    'rc': rc,
-                    'reason': out})
-        LOG.debug(
-            'Method: %(method)s Return Code: %(rc)s '
-            'Output: %(out)s', {
-                'method': self.__class__.__name__, 'rc': rc, 'out': out})
+            else:
+                print('Error') 
+                print((
+                    'Retry %(retry)s time: %(method)s Fail '
+                    '%(rc)s: %(reason)s') % {
+                        'retry': retry_time,
+                        'method': self.__class__.__name__,
+                        'rc': rc,
+                        'reason': out
+                    }
+                )
+        # print(
+        #     'Method: %(method)s Return Code: %(rc)s '
+        #     'Output: %(out)s', {
+        #         'method': self.__class__.__name__, 'rc': rc, 'out': out})
         return rc, out
     return inner
 
 
-def util_execute(command_line):
-    content, err = utils.execute(command_line, shell=True)
+# def util_execute(command_line):
+#     content, err = utils.execute(command_line, shell=True)
+#     return content
+
+
+def test_execute(command_line):
+    proc = subprocess.Popen(command_line, stdout=subprocess.PIPE)
+    try:
+        outs, errs = proc.communicate()
+        content = outs.decode("utf-8")
+    # except subprocess.Timeout:
+    #     print("Timeout")
+    #     proc.kill()
+    #     outs, errs = proc.communicate()
+    #     content = None
+    except Exception:
+        content = ''
+
     return content
 
 
@@ -77,11 +89,12 @@ def strip_empty_in_list(list):
 def table_to_dict(table):
     tableHeader = table[0].split("  ")
     tableHeaderList = strip_empty_in_list(tableHeader)
-
+    # print("Table Header List")
+    # print(tableHeaderList)
     result = []
 
     for i in range(len(table) - 2):
-        if table[i + 2].strip() == "":
+        if table[i + 2].strip() is "":
             break
 
         resultEntry = {}
@@ -96,6 +109,7 @@ def table_to_dict(table):
 
 
 def content_lines_to_dict(content_lines):
+
     result = []
     resultEntry = {}
 
@@ -115,7 +129,7 @@ def content_lines_to_dict(content_lines):
 @six.add_metaclass(abc.ABCMeta)
 class BaseCommand(object):
 
-    """The BaseCommand abstract class."""
+    """The BaseCommand abstract class"""
 
     def __init__(self):
         super(BaseCommand, self).__init__()
@@ -125,52 +139,53 @@ class BaseCommand(object):
         pass
 
 
-class ExecuteCommand(BaseCommand):
+# class ExecuteCommand(BaseCommand):
 
-    """The Common ExecuteCommand."""
+#     """The Common ExecuteCommand"""
 
-    def __init__(self, cli_conf):
-        super(ExecuteCommand, self).__init__()
-        self.cli_retry_time = cli_conf.get('cli_retry_time')
+#     def __init__(self, cli_init):
+#         super(ExecuteCommand, self).__init__()
+#         self.cli_retry_time = cli_init.get('cli_retry_time')
 
-    @retry_cli
-    def execute(self, *args, **kwargs):
-        result = None
-        rc = 0
-        try:
-            result, err = utils.execute(*args, **kwargs)
-        except processutils.ProcessExecutionError as pe:
-            rc = pe.exit_code
-            result = pe.stdout
-            result = result.replace('\n', '\\n')
-            LOG.error(
-                'Error on execute command. '
-                'Error code: %(exit_code)d Error msg: %(result)s', {
-                    'exit_code': pe.exit_code, 'result': result})
-        return rc, result
+#     @retry_cli
+#     def execute(self, *args, **kwargs):
+#         result = None
+#         rc = 0
+#         try:
+#             result, err = utils.execute(*args, **kwargs)
+#         except processutils.ProcessExecutionError as pe:
+#             rc = -2
+#             result = pe.stdout
+#             result = result.replace('\n', '\\n')
+#             LOG.error(_LE('Error on execute command. '
+#                           'Error code: %d Error msg: %s')
+#                       % (pe.exit_code, result))
+#         except Exception:
+#             rc = -2
+#         return rc, result
 
 
 class CLIBaseCommand(BaseCommand):
 
     """The CLIBaseCommand class."""
 
-    def __init__(self, cli_conf):
+    def __init__(self, cli_init):
         super(CLIBaseCommand, self).__init__()
         self.java = "java -jar"
-        self.execute_file = cli_conf.get('path')
-        self.ip = cli_conf.get('ip')
-        self.password = cli_conf.get('password')
-        self.cli_retry_time = cli_conf.get('cli_retry_time')
+        self.execute_file = cli_init.get('path')
+        self.ip = cli_init.get('ip')
+        self.password = cli_init.get('password')
+        self.cli_retry_time = cli_init.get('cli_retry_time')
         self.command = ""
         self.parameters = ()
         self.command_line = ""
 
-    def _generate_command(self, parameters):
-        """Generate execute Command. use java, execute, command, parameters."""
+    def _genertate_command(self, parameters):
+        """Geneate execute Command. use java, execute, command, parameters"""
         self.parameters = parameters
         parameters_line = ' '.join(parameters)
 
-        if self.password:
+        if self.password != '':
             parameters_line = 'password=%s %s' % (
                 self.password, parameters_line)
 
@@ -186,16 +201,19 @@ class CLIBaseCommand(BaseCommand):
     def _parser(self, content=None):
         """The parser to parse command result.
 
-        :param content: The parse Content
+        :param content: The parse Content.
         :returns: parse result
         """
         content = content.replace("\r", "")
         content = content.replace("\\/-", "")
+        # content = re.sub(r'(\\\/)+-+', '', content)
         content = content.strip()
-        LOG.debug(content)
+        # print(content)
 
         if content is not None:
             content_lines = content.split("\n")
+            # print("Content Line:")
+            # print(content_lines)
             rc, out = self._parse_return(content_lines)
 
             if rc != 0:
@@ -207,34 +225,43 @@ class CLIBaseCommand(BaseCommand):
 
     @retry_cli
     def execute(self, *args, **kwargs):
-        command_line = self._generate_command(args)
-        LOG.debug('Executing: %(command)s', {'command': command_line})
+        """The execute command function need to add parameters
+
+        :args args: Command's parameters
+        :returns: execute result
+        """
+        command_line = self._genertate_command(args)
+        # print(command_line)
+        command_line = command_line.split(' ')
         rc = 0
         result = None
         try:
             content = self._execute(command_line)
+            # print(content)
             rc, result = self._parser(content)
-        except processutils.ProcessExecutionError as pe:
-            rc = -2  # prevent confusing with cli real rc
-            result = pe.stdout
-            result = result.replace('\n', '\\n')
-            LOG.error(
-                'Error on execute %(command)s. '
-                'Error code: %(exit_code)d Error msg: %(result)s', {
-                    'command': command_line,
-                    'exit_code': pe.exit_code,
-                    'result': result})
+        # except processutils.ProcessExecutionError as pe:
+        #     rc = -2
+        #     result = pe.stdout
+        #     result = result.replace('\n', '\\n')
+        #     LOG.error(_LE('Error on execute command. '
+        #                   'Error code: %d Error msg: %s')
+        #               % (pe.exit_code, result))
+        except Exception as e:
+            print('error %s' % e)
+            rc = -2
+
         return rc, result
 
     def _execute(self, command_line):
-        return util_execute(command_line)
+        # return util_execute(command_line)
+        return test_execute(command_line)
 
     def set_ip(self, ip):
-        """Set the Raid's ip."""
+        """Set the Raid's ip"""
         self.ip = ip
 
     def _parse_return(self, content_lines):
-        """Get the end of command line result."""
+        """Get the end of command line result"""
         rc = 0
         return_value = content_lines[-1].strip().split(' ', 1)[1]
         return_cli_result = content_lines[-2].strip().split(' ', 1)[1]
@@ -246,7 +273,7 @@ class CLIBaseCommand(BaseCommand):
 
 class CreateLD(CLIBaseCommand):
 
-    """The Create LD Command."""
+    """The Create LD Command"""
 
     def __init__(self, *args, **kwargs):
         super(CreateLD, self).__init__(*args, **kwargs)
@@ -255,7 +282,7 @@ class CreateLD(CLIBaseCommand):
 
 class CreateLV(CLIBaseCommand):
 
-    """The Create LV Command."""
+    """The Create LV Command"""
 
     def __init__(self, *args, **kwargs):
         super(CreateLV, self).__init__(*args, **kwargs)
@@ -264,7 +291,7 @@ class CreateLV(CLIBaseCommand):
 
 class CreatePartition(CLIBaseCommand):
 
-    """Create Partition.
+    """Create Partition
 
     create part [LV-ID] [name] [size={partition-size}]
                 [min={minimal-reserve-size}] [init={switch}]
@@ -278,7 +305,7 @@ class CreatePartition(CLIBaseCommand):
 
 class DeletePartition(CLIBaseCommand):
 
-    """Delete Partition.
+    """Delete Partition
 
     delete part [partition-ID] [-y]
     """
@@ -290,14 +317,13 @@ class DeletePartition(CLIBaseCommand):
 
 class SetPartition(CLIBaseCommand):
 
-    """Set Partition.
+    """Set Partition
 
     set part [partition-ID] [name={partition-name}]
              [min={minimal-reserve-size}]
     set part expand [partition-ID] [size={expand-size}]
     set part purge [partition-ID] [number] [rule-type]
     set part reclaim [partition-ID]
-    set part tier-resided [partition-ID] tier={tier-level-list}
     """
 
     def __init__(self, *args, **kwargs):
@@ -307,7 +333,7 @@ class SetPartition(CLIBaseCommand):
 
 class CreateMap(CLIBaseCommand):
 
-    """Map the Partition on the channel.
+    """Map the Partition on the channel
 
     create map [part] [partition-ID] [Channel-ID]
                [Target-ID] [LUN-ID] [assign={assign-to}]
@@ -320,7 +346,7 @@ class CreateMap(CLIBaseCommand):
 
 class DeleteMap(CLIBaseCommand):
 
-    """Unmap the Partition on the channel.
+    """Unmap the Partition on the channel
 
     delete map [part] [partition-ID] [Channel-ID]
                [Target-ID] [LUN-ID] [-y]
@@ -333,7 +359,7 @@ class DeleteMap(CLIBaseCommand):
 
 class CreateSnapshot(CLIBaseCommand):
 
-    """Create partition's Snapshot.
+    """Create partion's Snapshot
 
     create si [part] [partition-ID]
     """
@@ -345,7 +371,7 @@ class CreateSnapshot(CLIBaseCommand):
 
 class DeleteSnapshot(CLIBaseCommand):
 
-    """Delete partition's Snapshot.
+    """Delete partion's Snapshot
 
     delete si [snapshot-image-ID] [-y]
     """
@@ -357,7 +383,7 @@ class DeleteSnapshot(CLIBaseCommand):
 
 class CreateReplica(CLIBaseCommand):
 
-    """Create partition or snapshot's replica.
+    """Create partition or snapshot's replica
 
     create replica [name] [part | si] [source-volume-ID]
                    [part] [target-volume-ID] [type={replication-mode}]
@@ -385,7 +411,7 @@ class DeleteReplica(CLIBaseCommand):
 
 class CreateIQN(CLIBaseCommand):
 
-    """Create host iqn for CHAP or lun filter.
+    """Create host iqn for CHAP or lun filter
 
     create iqn [IQN] [IQN-alias-name] [user={username}] [password={secret}]
                [target={name}] [target-password={secret}] [ip={ip-address}]
@@ -399,7 +425,7 @@ class CreateIQN(CLIBaseCommand):
 
 class DeleteIQN(CLIBaseCommand):
 
-    """Delete host iqn by name.
+    """Delete host iqn by name
 
     delete iqn [name]
     """
@@ -411,16 +437,15 @@ class DeleteIQN(CLIBaseCommand):
 
 class ShowCommand(CLIBaseCommand):
 
-    """Basic Show Command."""
+    """Basic Show Command"""
 
     def __init__(self, *args, **kwargs):
         super(ShowCommand, self).__init__(*args, **kwargs)
         self.param_detail = "-l"
         self.default_type = "table"
-        self.start_key = ""
 
     def _parser(self, content=None):
-        """Parse Table or Detail format into dict.
+        """Parse Table or Detail format into dict
 
         # Table format
 
@@ -469,6 +494,7 @@ class ShowCommand(CLIBaseCommand):
         if detect_type == "list":
 
             start_id = self.detect_detail_start_index(out)
+            # print('start ID %s ' % start_id)
             if start_id < 0:
                 return rc, []
 
@@ -476,6 +502,7 @@ class ShowCommand(CLIBaseCommand):
         else:
 
             start_id = self.detect_table_start_index(out)
+            # print('start ID %s ' % start_id)
             if start_id < 0:
                 return rc, []
 
@@ -491,14 +518,15 @@ class ShowCommand(CLIBaseCommand):
         return detect_type
 
     def detect_table_start_index(self, content):
+
         for i in range(3, len(content)):
-            key = content[i].strip().split('  ')
-            if self.start_key in key[0].strip():
+            if len(content[i].strip().split('  ')) >= 3:
                 return i
 
         return -1
 
     def detect_detail_start_index(self, content):
+
         for i in range(3, len(content)):
             split_entry = content[i].strip().split(' ')
             if len(split_entry) >= 2 and ':' in split_entry[0]:
@@ -509,7 +537,7 @@ class ShowCommand(CLIBaseCommand):
 
 class ShowLD(ShowCommand):
 
-    """Show LD.
+    """Show LD
 
     show ld [index-list]
     """
@@ -521,7 +549,7 @@ class ShowLD(ShowCommand):
 
 class ShowLV(ShowCommand):
 
-    """Show LV.
+    """Show LV
 
     show lv [lv={LV-IDs}] [-l]
     """
@@ -529,23 +557,11 @@ class ShowLV(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowLV, self).__init__(*args, **kwargs)
         self.command = "show lv"
-        self.start_key = "ID"
-
-    def detect_table_start_index(self, content):
-        if "tier" in self.parameters:
-            self.start_key = "LV-Name"
-
-        for i in range(3, len(content)):
-            key = content[i].strip().split('  ')
-            if self.start_key in key[0].strip():
-                return i
-
-        return -1
 
 
 class ShowPartition(ShowCommand):
 
-    """Show Partition.
+    """Show Partition
 
     show part [part={partition-IDs} | lv={LV-IDs}] [-l]
     """
@@ -553,12 +569,11 @@ class ShowPartition(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowPartition, self).__init__(*args, **kwargs)
         self.command = "show part"
-        self.start_key = "ID"
 
 
 class ShowSnapshot(ShowCommand):
 
-    """Show Snapshot.
+    """Show Snapshot
 
     show si [si={snapshot-image-IDs} | part={partition-IDs} | lv={LV-IDs}] [-l]
     """
@@ -566,12 +581,11 @@ class ShowSnapshot(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowSnapshot, self).__init__(*args, **kwargs)
         self.command = "show si"
-        self.start_key = "Index"
 
 
 class ShowDevice(ShowCommand):
 
-    """Show Device.
+    """Show Device
 
     show device
     """
@@ -579,12 +593,11 @@ class ShowDevice(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowDevice, self).__init__(*args, **kwargs)
         self.command = "show device"
-        self.start_key = "Index"
 
 
 class ShowChannel(ShowCommand):
 
-    """Show Channel.
+    """Show Channel
 
     show channel
     """
@@ -592,12 +605,11 @@ class ShowChannel(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowChannel, self).__init__(*args, **kwargs)
         self.command = "show channel"
-        self.start_key = "Ch"
 
 
 class ShowDisk(ShowCommand):
 
-    """The Show Disk Command.
+    """The Show Disk Command
 
     show disk [disk-index-list | channel={ch}]
     """
@@ -609,7 +621,7 @@ class ShowDisk(ShowCommand):
 
 class ShowMap(ShowCommand):
 
-    """Show Map.
+    """Show Map
 
     show map [part={partition-IDs} | channel={channel-IDs}] [-l]
     """
@@ -617,12 +629,11 @@ class ShowMap(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowMap, self).__init__(*args, **kwargs)
         self.command = "show map"
-        self.start_key = "Ch"
 
 
 class ShowNet(ShowCommand):
 
-    """Show IP network.
+    """Show IP network
 
     show net [id={channel-IDs}] [-l]
     """
@@ -630,12 +641,11 @@ class ShowNet(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowNet, self).__init__(*args, **kwargs)
         self.command = "show net"
-        self.start_key = "ID"
 
 
 class ShowLicense(ShowCommand):
 
-    """Show License.
+    """Show License
 
     show license
     """
@@ -643,10 +653,9 @@ class ShowLicense(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowLicense, self).__init__(*args, **kwargs)
         self.command = "show license"
-        self.start_key = "License"
 
     def _parser(self, content=None):
-        """Parse License format.
+        """Parse License format
 
         # License format
 
@@ -690,7 +699,8 @@ class ShowLicense(ShowCommand):
 
 class ShowReplica(ShowCommand):
 
-    """Show information of all replication jobs or specific job.
+    """Show information of all current replication jobs,
+    or details for specific replication volume pairs.
 
     show replica [id={volume-pair-IDs}] [-l] id={volume-pair-IDs}
     """
@@ -702,7 +712,7 @@ class ShowReplica(ShowCommand):
 
 class ShowWWN(ShowCommand):
 
-    """Show Fibre network.
+    """Show Fibre network
 
     show wwn
     """
@@ -710,17 +720,14 @@ class ShowWWN(ShowCommand):
     def __init__(self, *args, **kwargs):
         super(ShowWWN, self).__init__(*args, **kwargs)
         self.command = "show wwn"
-        self.start_key = "CH"
 
 
 class ShowIQN(ShowCommand):
 
-    """Show iSCSI initiator IQN which is set by create iqn.
+    """Show iSCSI initiator IQN which set by create iqn
 
     show iqn
     """
-
-    LIST_START_LINE = "List of initiator IQN(s):"
 
     def __init__(self, *args, **kwargs):
         super(ShowIQN, self).__init__(*args, **kwargs)
@@ -728,8 +735,9 @@ class ShowIQN(ShowCommand):
         self.default_type = "list"
 
     def detect_detail_start_index(self, content):
+
         for i in range(3, len(content)):
-            if content[i].strip() == self.LIST_START_LINE:
+            if content[i].strip() == "List of initiator IQN(s):":
                 return i + 2
 
         return -1
